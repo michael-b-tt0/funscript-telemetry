@@ -1,0 +1,378 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Funscript Modifier telemetry batch",
+	"description": "A batch of browser telemetry events from one document load, serialized as JSON for navigator.sendBeacon(). The environment and display describe the browser when the batch is sent.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["schemaVersion", "pageLoadId", "sentAt", "environment", "display", "events"],
+	"properties": {
+		"schemaVersion": {
+			"description": "Version of the telemetry payload contract.",
+			"type": "integer",
+			"const": 1
+		},
+		"pageLoadId": {
+			"description": "Random UUID generated once per document load and reused for its batches. Generate a fresh ID on reload.",
+			"$ref": "#/$defs/uuidV4"
+		},
+		"appVersion": {
+			"description": "App release or build identifier. Omit if unavailable to the startup reporter.",
+			"type": "string",
+			"maxLength": 64,
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(?![\\s\\S])",
+			"examples": ["2.4"]
+		},
+		"sentAt": {
+			"description": "Client time when the batch was prepared for sending.",
+			"$ref": "#/$defs/timestamp"
+		},
+		"environment": { "$ref": "#/$defs/environment" },
+		"display": { "$ref": "#/$defs/display" },
+		"events": {
+			"description": "Events in capture order. Use a separate batch when more events are pending.",
+			"type": "array",
+			"minItems": 1,
+			"maxItems": 24,
+			"items": {
+				"oneOf": [
+					{ "$ref": "#/$defs/startupAttemptEvent" },
+					{ "$ref": "#/$defs/startupSuccessEvent" },
+					{ "$ref": "#/$defs/toolRunEvent" },
+					{ "$ref": "#/$defs/scriptDownloadEvent" },
+					{ "$ref": "#/$defs/errorEvent" }
+				]
+			}
+		}
+	},
+	"$defs": {
+		"uuidV4": {
+			"type": "string",
+			"minLength": 36,
+			"maxLength": 36,
+			"pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+		},
+		"timestamp": {
+			"$comment": "Enable date-time format assertions in the receiving validator to check calendar dates as well as the UTC representation.",
+			"description": "UTC timestamp in the format produced by JavaScript Date.toISOString().",
+			"type": "string",
+			"minLength": 24,
+			"maxLength": 24,
+			"format": "date-time",
+			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+		},
+		"environment": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["browser", "os", "deviceType"],
+			"properties": {
+				"browser": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["family"],
+					"properties": {
+						"family": {
+							"description": "Use other for a recognized family outside this list and unknown when the family cannot be determined.",
+							"enum": [
+								"chrome",
+								"chromium",
+								"edge",
+								"firefox",
+								"safari",
+								"opera",
+								"samsung_internet",
+								"brave",
+								"webview",
+								"other",
+								"unknown"
+							]
+						},
+						"majorVersion": { "$ref": "#/$defs/majorVersion" }
+					}
+				},
+				"os": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["family"],
+					"properties": {
+						"family": {
+							"description": "Use other for a recognized family outside this list and unknown when the family cannot be determined.",
+							"enum": [
+								"windows",
+								"macos",
+								"ios",
+								"ipados",
+								"android",
+								"chromeos",
+								"linux",
+								"other",
+								"unknown"
+							]
+						},
+						"majorVersion": { "$ref": "#/$defs/majorVersion" }
+					}
+				},
+				"deviceType": {
+					"description": "Best available device classification. Use unknown when it cannot be determined.",
+					"enum": ["desktop", "phone", "tablet", "headset", "other", "unknown"]
+				},
+				"browserLanguage": {
+					"description": "Primary browser language from navigator.language, when available.",
+					"$ref": "#/$defs/languageTag"
+				},
+				"appLanguage": {
+					"description": "Active application UI language, when known.",
+					"$ref": "#/$defs/languageTag"
+				}
+			}
+		},
+		"majorVersion": {
+			"description": "Numeric major version when reliably available.",
+			"type": "integer",
+			"minimum": 0,
+			"maximum": 65535
+		},
+		"languageTag": {
+			"description": "BCP 47 language tag.",
+			"type": "string",
+			"maxLength": 64,
+			"pattern": "^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*(?![\\s\\S])",
+			"examples": ["en-GB", "zh-CN"]
+		},
+		"display": {
+			"description": "Display measurements and current app theme. Omit unavailable or out-of-range readings. Include a screen or viewport entry only when both of its dimensions are valid.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"screen": {
+					"description": "Screen dimensions in CSS pixels from window.screen.",
+					"$ref": "#/$defs/dimensions"
+				},
+				"viewport": {
+					"description": "Layout viewport dimensions in CSS pixels from window.innerWidth and window.innerHeight.",
+					"$ref": "#/$defs/dimensions"
+				},
+				"devicePixelRatio": {
+					"description": "Reported ratio of device pixels to CSS pixels.",
+					"type": "number",
+					"exclusiveMinimum": 0,
+					"maximum": 32
+				},
+				"theme": {
+					"description": "Active app theme.",
+					"enum": ["light", "dark"]
+				}
+			}
+		},
+		"dimensions": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["widthPx", "heightPx"],
+			"properties": {
+				"widthPx": { "type": "integer", "minimum": 0, "maximum": 65535 },
+				"heightPx": { "type": "integer", "minimum": 0, "maximum": 65535 }
+			}
+		},
+		"editorToolId": {
+			"description": "Stable identifier for an editor tool, independent of the localized UI label.",
+			"enum": [
+				"offset",
+				"simple_fun_halver",
+				"fun_doubler",
+				"action_thinner",
+				"selective_reduction",
+				"smart_reduction",
+				"randomizer",
+				"metadata_editor",
+				"stroke_length_modifier",
+				"funscript_inverter",
+				"action_deleter",
+				"segment_extractor",
+				"smoother",
+				"ai_script_generator",
+				"fill_generator",
+				"script_humanizer"
+			]
+		},
+		"toolId": {
+			"anyOf": [
+				{ "$ref": "#/$defs/editorToolId" },
+				{ "enum": ["video_playback", "vr_playback", "handy_integration"] }
+			]
+		},
+		"eventId": {
+			"description": "Random UUID for this event. Keep it unchanged if the same event is sent again so the receiver can deduplicate it.",
+			"$ref": "#/$defs/uuidV4"
+		},
+		"startupAttemptEvent": {
+			"description": "Record once per document load in the JavaScript collector before loading the Blazor runtime or starting Blazor. Send promptly with the same pageLoadId used for the startup outcome.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "eventId", "occurredAt"],
+			"properties": {
+				"type": { "const": "startup_attempt" },
+				"eventId": { "$ref": "#/$defs/eventId" },
+				"occurredAt": { "$ref": "#/$defs/timestamp" }
+			}
+		},
+		"startupSuccessEvent": {
+			"description": "Record once per document load after the root Blazor component completes its first interactive render. Send promptly even if this is the only event in the batch.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "eventId", "occurredAt"],
+			"properties": {
+				"type": { "const": "startup_success" },
+				"eventId": { "$ref": "#/$defs/eventId" },
+				"occurredAt": { "$ref": "#/$defs/timestamp" }
+			}
+		},
+		"toolRunEvent": {
+			"description": "A user invokes an editor tool or starts a video, VR, or Handy action. Record once per invocation.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "eventId", "occurredAt", "toolId"],
+			"properties": {
+				"type": { "const": "tool_run" },
+				"eventId": { "$ref": "#/$defs/eventId" },
+				"occurredAt": { "$ref": "#/$defs/timestamp" },
+				"toolId": { "$ref": "#/$defs/toolId" }
+			}
+		},
+		"scriptDownloadEvent": {
+			"description": "The app initiates a script download in the browser.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "eventId", "occurredAt", "fileName"],
+			"properties": {
+				"type": { "const": "script_download" },
+				"eventId": { "$ref": "#/$defs/eventId" },
+				"occurredAt": { "$ref": "#/$defs/timestamp" },
+				"fileName": {
+					"description": "Export basename suggested by the app, including the .funscript extension. Replace path separators and control characters and truncate overlong names while preserving the extension.",
+					"type": "string",
+					"maxLength": 255,
+					"pattern": "^[^/\\\\\\u0000-\\u001F\\u007F]*\\.funscript(?![\\s\\S])",
+					"examples": ["demo_offset_10.funscript"]
+				}
+			}
+		},
+		"errorEvent": {
+			"description": "A failure observed by the JavaScript collector during startup or app use.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "eventId", "occurredAt", "phase", "errorType"],
+			"properties": {
+				"type": { "const": "error" },
+				"eventId": { "$ref": "#/$defs/eventId" },
+				"occurredAt": { "$ref": "#/$defs/timestamp" },
+				"phase": {
+					"description": "Use startup for failures until the root Blazor component completes its first interactive render. Use runtime for failures after that point.",
+					"enum": ["startup", "runtime"]
+				},
+				"errorType": {
+					"description": "Exception type or a collector-defined error category. Use UnknownError when no type can be derived.",
+					"type": "string",
+					"maxLength": 128,
+					"pattern": "^[A-Za-z][A-Za-z0-9_.+]*(?![\\s\\S])",
+					"examples": ["TypeError", "System.InvalidOperationException", "ResourceLoadError"]
+				},
+				"code": {
+					"description": "Stable error code assigned by the app or collector, when available.",
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*(?![\\s\\S])",
+					"examples": ["BLAZOR_SCRIPT_LOAD_FAILED", "BLAZOR_START_REJECTED"]
+				},
+				"message": {
+					"description": "Optional single-line diagnostic summary sanitized by the sender. Remove user data, filenames, URLs, paths, secrets, and stack frames. Omit if safe text is unavailable.",
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 512,
+					"pattern": "^[^\\u0000-\\u001F\\u007F]+(?![\\s\\S])"
+				}
+			}
+		}
+	},
+	"examples": [
+		{
+			"schemaVersion": 1,
+			"pageLoadId": "f5aea3a6-3da5-41ed-b3fa-d16d13fea628",
+			"appVersion": "2.4",
+			"sentAt": "2026-11-25T14:00:00.120Z",
+			"environment": {
+				"browser": { "family": "safari" },
+				"os": { "family": "ios" },
+				"deviceType": "phone",
+				"browserLanguage": "en-GB",
+				"appLanguage": "en-US"
+			},
+			"display": {
+				"screen": { "widthPx": 390, "heightPx": 844 },
+				"viewport": { "widthPx": 390, "heightPx": 664 },
+				"devicePixelRatio": 3,
+				"theme": "dark"
+			},
+			"events": [
+				{
+					"type": "startup_success",
+					"eventId": "337d9252-bc70-47f0-baf2-6c6364809d3e",
+					"occurredAt": "2026-11-25T14:00:00.100Z"
+				}
+			]
+		},
+		{
+			"schemaVersion": 1,
+			"pageLoadId": "43880393-1647-49be-a64a-2638e1f80eb7",
+			"appVersion": "2.4",
+			"sentAt": "2026-11-25T14:23:35.500Z",
+			"environment": {
+				"browser": { "family": "firefox" },
+				"os": { "family": "windows", "majorVersion": 11 },
+				"deviceType": "desktop",
+				"browserLanguage": "en-GB",
+				"appLanguage": "en-US"
+			},
+			"display": {
+				"screen": { "widthPx": 1920, "heightPx": 1080 },
+				"viewport": { "widthPx": 1280, "heightPx": 720 },
+				"devicePixelRatio": 1.25,
+				"theme": "dark"
+			},
+			"events": [
+				{
+					"type": "tool_run",
+					"eventId": "bfd1a193-88e0-490f-8888-6353dcae7f02",
+					"occurredAt": "2026-11-25T14:23:30.000Z",
+					"toolId": "offset"
+				},
+				{
+					"type": "script_download",
+					"eventId": "1004d920-0019-47ae-b952-e435afdf32c4",
+					"occurredAt": "2026-11-25T14:23:35.000Z",
+					"fileName": "demo_offset_10.funscript"
+				}
+			]
+		},
+		{
+			"schemaVersion": 1,
+			"pageLoadId": "d6962870-a4bd-4cc8-af23-3dd2b045879a",
+			"sentAt": "2026-11-25T15:00:00.100Z",
+			"environment": {
+				"browser": { "family": "unknown" },
+				"os": { "family": "unknown" },
+				"deviceType": "unknown"
+			},
+			"display": {},
+			"events": [
+				{
+					"type": "error",
+					"eventId": "7499d766-d870-4e96-8b7e-3a69fa7dc18f",
+					"occurredAt": "2026-11-25T15:00:00.000Z",
+					"phase": "startup",
+					"errorType": "ResourceLoadError",
+					"code": "BLAZOR_SCRIPT_LOAD_FAILED",
+					"message": "The Blazor runtime script could not be loaded."
+				}
+			]
+		}
+	]
+}
